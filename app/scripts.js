@@ -8,7 +8,7 @@
 
 const DSP_ADDRESS = "0x7439E9Bb6D8a84dd3A23fe621A30F95403F87fB9"; // ERC20
 const MACH_ADDRESS = "0xc21d97673B9E0B3AA53a06439F71fDc1facE393B"; // ERC20
-const DSP_BOOTSTRAP_ADDRESS = "0x93fCA4c6E2525C09c95269055B46f16b1459BF9d";
+const DSP_BOOTSTRAP_ADDRESS = "0x8d6B92A796ce9AE90480C502b8E0c89BF48e6B3f";
 const ALCHEMY_API_ADDRESS = "https://eth-sepolia.g.alchemy.com/v2/API_KEY";
 
 const provider = new ethers.providers.JsonRpcProvider(ALCHEMY_API_ADDRESS);
@@ -124,18 +124,20 @@ window.onload = async () => {
   console.groupEnd();
   console.groupEnd();
 
+  /*
   console.group("Approve 실행");
   try {
     // 100000000 MACH를 approve합니다.
     const tx = approve(ethers.utils.parseEther("100000000"), signer);
     // 만약 트랜잭션을 만든다면, tx.wait() 을 실행해서, 트랜잭션이 완료되기를 기다릴 수 있습니다.
     // https://docs.ethers.org/v5/api/providers/types/#providers-TransactionResponse 에서 wait() 참고
-    console.log(tx);
+    await tx.wait();
   } catch (e) {
     // 실행할 수 없는 트랜잭션 또는 유저가 취소한 경우
     console.log("실행 취소");
   }
   console.groupEnd();
+  */
 
   // -------
   console.group("예치하기");
@@ -144,25 +146,28 @@ window.onload = async () => {
   // 만약 allownace가 부족하다면, approve를 실행해야합니다.
   //
   try {
-    // 10000MACH를 Deposit합니다.
-    const tx = deposit(ethers.utils.parseEther("10000"), signer);
-    console.log(tx);
+    // 100MACH를 Deposit합니다.
+    const tx = deposit(ethers.utils.parseEther("100"), signer);
+    await tx.wait();
   } catch (e) {
     console.log("실행 취소");
   }
   console.groupEnd();
 
+  /*
   // -------
   console.group("출금하기");
   // -------
   try {
     // signer의 id=0 vault를 출금합니다.
     const tx = claim(0, signer);
+    await tx.wait();
     console.log(tx);
   } catch (e) {
     console.log("실행 취소");
   }
   console.groupEnd();
+  */
 
   console.groupEnd();
 };
