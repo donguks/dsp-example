@@ -1,483 +1,168 @@
-// Constants
-// ========================================================
-/**
- * To keep track of which wallet is connected throughout our app
- */
-let WALLET_CONNECTED = '';
+// 테스트 환경에 맞는 주소를 설정해야하고, 메타마스크는 해당 네트워크가 선택되어있어야 합니다.
 
-/**
- * localStorage key
- */
-let WALLET_CONNECTION_PREF_KEY = 'WC_PREF';
+// 용어 설명
+// - Vault = 하나의 적금 계좌
+// - DSP_BOOTSTRAP = Vault를 생성하는 컨트랙트
+// - ALCHEMY_API_ADDRESS = 알케미 API 주소. ethereum 노드를 제공해주는 서비스입니다. https://www.alchemy.com/에서 가입하고, 사용하는 체인에 맞게 key를 생성하면됩니다.
+//
 
-/**
- * Current chain connected with chain id and name as a object { id: 1, name: "Ethereum Mainnet" }
- */
-const CHAIN_CONNECTED = {
-    id: null,
-    name: null
-};
+const DSP_ADDRESS = "0x7439E9Bb6D8a84dd3A23fe621A30F95403F87fB9"; // ERC20
+const MACH_ADDRESS = "0xc21d97673B9E0B3AA53a06439F71fDc1facE393B"; // ERC20
+const DSP_BOOTSTRAP_ADDRESS = "0x93fCA4c6E2525C09c95269055B46f16b1459BF9d";
+const ALCHEMY_API_ADDRESS = "https://eth-sepolia.g.alchemy.com/v2/API_KEY";
 
-/**
- * Chain ids and their names
- */
-const CHAIN_DICTIONARY = {
-    1: 'Ethereum Mainnet',
-    5: 'Goerli Testnet',
-    137: 'Polygon Mainnet',
-    1337: 'Localhost',
-    1402: 'zkEVM Testnet',
-    80001: 'Mumbai Testnet',
-    11155111: 'Sepolia Testnet'
-};
+const provider = new ethers.providers.JsonRpcProvider(ALCHEMY_API_ADDRESS);
 
-/**
- * Required chain to interact with contract
- */
-const CHAIN_ID_REQUIRED = 80001; //Mumbai
+// Address로 Vaults 조회하기
+async function getVaults(address) {
+  const contract = new ethers.Contract(
+    DSP_BOOTSTRAP_ADDRESS,
+    [
+      "function nextVaultId(address owner) view returns (uint nextVaultId)",
+      "function vault(address owner, uint256 id) view returns (tuple(uint amount, uint depositTs, bool active))",
+    ],
+    provider
+  );
 
-/**
- * Same contract deployed to each network
- */
-const CONTRACT_ON_CHAINS = {
-    1: '0x76460E73eadE1DDe315E07a5eCa092448c193a2F',
-    5: '0x3aC587078b344a3d27e56632dFf236F1Aff04D56',
-    137: '0x375F01b156D9BdDDd41fd38c5CC74C514CB71f73',
-    1337: '',
-    1402: '0x76460E73eadE1DDe315E07a5eCa092448c193a2F',
-    80001: '0x7Bd54062eFa363A97dC20f404825597455E93582',
-    11155111: '0x375f01b156d9bdddd41fd38c5cc74c514cb71f73',
-};
+  const nextId = await contract.nextVaultId(address);
+  let max = nextId.toNumber();
 
-/**
- * All blockchain explorers
- */
-const BLOCKCHAIN_EXPLORERS = {
-    1: 'https://etherscan.io',
-    5: 'https://goerli.etherscan.io',
-    137: 'https://polygonscan.com',
-    1337: null,
-    1402: 'https://explorer.public.zkevm-test.net',
-    80001: 'https://mumbai.polygonscan.com',
-    11155111: 'https://sepolia.etherscan.io',
-};
+  const vaults = await Promise.all([
+    ...Array(max)
+      .fill()
+      .map((_, i) => contract.vault(address, i)),
+  ]);
 
-/**
- * ABI needed to interpret how to interact with the contract
- */
-const CONTRACT_ABI = [
-    {
-        "inputs": [
-            {
-                "internalType": "string",
-                "name": "_greeting",
-                "type": "string"
-            }
-        ],
-        "stateMutability": "nonpayable",
-        "type": "constructor"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "address",
-                "name": "sender",
-                "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "string",
-                "name": "message",
-                "type": "string"
-            }
-        ],
-        "name": "NewGreeting",
-        "type": "event"
-    },
-    {
-        "inputs": [],
-        "name": "getGreeting",
-        "outputs": [
-            {
-                "internalType": "string",
-                "name": "",
-                "type": "string"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "string",
-                "name": "_greeting",
-                "type": "string"
-            }
-        ],
-        "name": "setGreeting",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    }
-];
+  console.log(vaults);
+  // 3. Claim 가능한 토큰 계산하기.
+}
 
-// Functions
-// ========================================================
-/**
- * Helper function that converts hex values to strings
- * @param {*} hex 
- * @returns 
- */
-const hex2ascii = (hex) => {
-    console.group('hex2ascii');
-    console.log({ hex });
-    let str = '';
-    for (let i = 0; i < hex.length; i += 2) {
-        const v = parseInt(hex.substr(i, 2), 16);
-        if (v) str += String.fromCharCode(v);
-    }
-    console.groupEnd();
-    return str;
-};
+async function getAllownace(address) {
+  const contract = new ethers.Contract(
+    MACH_ADDRESS,
+    [
+      "function allowance(address owner, address spender) view returns (uint allownace)",
+    ],
+    provider
+  );
 
-/**
- * When the chainId has changed
- * @param {string|null} chainId
- */
-const onChainChanged = (chainId) => {
-    console.group('onChainChanged');
-    console.log({ chainId });
+  return contract.allowance(address, DSP_BOOTSTRAP_ADDRESS);
+}
+async function getMachBalance(address) {
+  const contract = new ethers.Contract(
+    MACH_ADDRESS,
+    ["function balanceOf(address owner) view returns (uint balance)"],
+    provider
+  );
 
-    // Get the UI element that displays the wallet network
-    const preWalletNetwork = document.getElementById('pre-wallet-network');
+  return contract.balanceOf(address);
+}
+async function approve(amount, signer) {
+  const contract = new ethers.Contract(
+    MACH_ADDRESS,
+    ["function approve(address spender, uint256 amount) returns (bool res)"],
+    signer
+  );
 
-    if (!chainId) {
-        CHAIN_CONNECTED.name = null;
-        CHAIN_CONNECTED.id = null;
+  return contract.approve(DSP_BOOTSTRAP_ADDRESS, amount);
+}
 
-        // Set the network to blank
-        preWalletNetwork.innerHTML = ``;
-    } else {
-        const parsedChainId = parseInt(`${chainId}`, 16);
-        CHAIN_CONNECTED.name = CHAIN_DICTIONARY?.[parsedChainId];
-        CHAIN_CONNECTED.id = parsedChainId;
+async function deposit(amount, signer) {
+  const contract = new ethers.Contract(
+    DSP_BOOTSTRAP_ADDRESS,
+    ["function deposit(uint256 amount) returns (bool res)"],
+    signer
+  );
 
-        const buttonNetwork = document.getElementById('button-network');
-        const divErrorNetwork = document.getElementById('div-error-network');
-        const formContractReadButton = document.querySelector('#form-contract-read button');
-        const formContractWriteInput = document.querySelector('#form-contract-write input');
-        const formContractWriteButton = document.querySelector('#form-contract-write button');
+  return contract.deposit(amount);
+}
 
-        if (parsedChainId !== CHAIN_ID_REQUIRED) {
-            // Show error elements
-            buttonNetwork.classList = `${buttonNetwork.classList.value.replaceAll('hidden', '')}`;
-            divErrorNetwork.classList = `${divErrorNetwork.classList.value.replaceAll('hidden', '')}`;
-            divErrorNetwork.children[1].innerHTML = `${CHAIN_CONNECTED.name}`;
+async function claim(id, signer) {
+  const contract = new ethers.Contract(
+    DSP_BOOTSTRAP_ADDRESS,
+    ["function claim(uint256 id) returns (bool res)"],
+    signer
+  );
 
-            // Disable forms
-            formContractReadButton.setAttribute('disabled', true);
-            formContractWriteInput.setAttribute('disabled', true);
-            formContractWriteButton.setAttribute('disabled', true);
-        } else {
-            // Hide error elements
-            buttonNetwork.classList = `${buttonNetwork.classList.value} hidden`;
-            divErrorNetwork.classList = `${divErrorNetwork.classList.value} hidden`;
-            divErrorNetwork.children[1].innerHTML = '';
+  return contract.claim(id);
+}
 
-            // Enable forms
-            formContractReadButton.removeAttribute('disabled');
-            formContractWriteInput.removeAttribute('disabled');
-            formContractWriteButton.removeAttribute('disabled');
-        }
-
-        // Set the network to show the current connected network
-        preWalletNetwork.innerHTML = `${CHAIN_CONNECTED?.id} / ${CHAIN_CONNECTED?.name}`;
-    }
-
-    console.log({ CHAIN_CONNECTED });
-    console.groupEnd();
-};
-
-/**
- * When wallet connects or disconnects with accountsChanged event
- * @param {*} accounts Array of accounts that have changed - typicall array of one
- */
-const onAccountsChanged = async (accounts) => {
-    console.group('onAccountsChanged');
-    console.log({ accounts });
-
-    // No accounts found - use onWalletDisconnect to update UI
-    if (accounts.length === 0) {
-        onChainChanged(null);
-        onWalletDisconnect();
-    } else {
-        // Accounts found - use callback for onWalletConnection to update UI
-        WALLET_CONNECTED = accounts?.[0];
-
-        // Update chain connected
-        const chainId = await ethereum.request({ method: 'eth_chainId' });
-
-        onChainChanged(chainId);
-        onWalletConnection();
-    }
-
-    console.groupEnd();
-};
-
-/**
- * When wallet disconnect occurs
- */
-const onWalletDisconnect = () => {
-    console.group('onWalletDisconnect');
-
-    // Hide connected section
-    const sectionConnected = document.getElementById('section-connected');
-    sectionConnected.classList = 'hidden';
-
-    // Enabled connect button
-    const buttonConnect = document.getElementById('button-connect');
-    buttonConnect.removeAttribute('disabled');
-    buttonConnect.innerHTML = 'Connect Wallet';
-
-    console.groupEnd();
-};
-
-/**
- * When a wallet connection occurs
- */
-const onWalletConnection = () => {
-    console.group('onWalletConnection');
-
-    // Disable connect button
-    const buttonConnect = document.getElementById('button-connect');
-    buttonConnect.setAttribute('disabled', true);
-    buttonConnect.innerHTML = 'Connected';
-
-    // Show connected section
-    const sectionConnected = document.getElementById('section-connected');
-    sectionConnected.classList = '';
-
-    // Set the wallet address to show the user
-    const preWalletAddress = document.getElementById('pre-wallet-address');
-    preWalletAddress.innerHTML = WALLET_CONNECTED;
-
-    console.groupEnd();
-};
-
-/**
- * When Connect Button is clicked
- */
-const connect = async () => {
-    console.group('connect');
-
-    // Reset our error element each time the button is clicked
-    const devErrorConnect = document.getElementById('div-error-connect');
-    devErrorConnect.innerHTML = '';
-    devErrorConnect.classList = devErrorConnect.classList.value.includes('hidden')
-        ? devErrorConnect.classList.value
-        : `${devErrorConnect.classList.value} hidden`;
-
-    try {
-        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-        WALLET_CONNECTED = accounts[0];
-
-        // Update chain connected
-        const chainId = await ethereum.request({ method: 'eth_chainId' });
-        onChainChanged(chainId);
-
-        // Update wallet connection preference to true
-        localStorage.setItem(WALLET_CONNECTION_PREF_KEY, true);
-
-        onWalletConnection();
-    } catch (error) {
-        console.log({ error });
-        // If error connecting, display the error message
-        devErrorConnect.innerHTML = error?.message ?? 'Unknown wallet connection error.'
-        devErrorConnect.classList = devErrorConnect.classList.value.replaceAll('hidden', '');
-    }
-
-    console.groupEnd();
-};
-
-/**
- * When Disconnect button is clicked
- */
-const disconnect = () => {
-    console.group('disconnect');
-
-    WALLET_CONNECTED = false;
-
-    onChainChanged(null);
-
-    // Remove wallet connection preference
-    localStorage.removeItem(WALLET_CONNECTION_PREF_KEY);
-
-    onWalletDisconnect();
-
-    console.groupEnd();
-};
-
-/**
- * Switches network to Mumbai Testnet or CHAIN_ID_REQUIRED
- */
-const switchNetwork = async () => {
-    console.group('switchNetwork');
-    console.log({ CHAIN_ID_REQUIRED: CHAIN_ID_REQUIRED.toString(16) });
-    try {
-        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${CHAIN_ID_REQUIRED.toString(16)}` }], })
-    } catch (error) {
-        console.log({ error });
-    }
-    console.groupEnd();
-};
-
-/**
- * When the getGreeting form is submitted
- * @param {*} event 
- */
-const onSubmitContractRead = async (event) => {
-    console.group('onSubmitContractRead');
-    event.preventDefault();
-
-    // Reset & Set Loading State
-    const preContractRead = document.getElementById('pre-contract-read');
-    preContractRead.innerHTML = '(Loading...)';
-    const button = document.querySelector(`#${event.currentTarget.id} button`);
-    button.setAttribute('disabled', true);
-
-    // Setup Interface + Encode Function
-    const GetGreeting = CONTRACT_ABI.find(i => i.name === 'getGreeting');
-    const interface = new ethers.utils.Interface([GetGreeting]);
-    const encodedFunction = interface.encodeFunctionData(`${GetGreeting.name}`);
-    console.log({ encodedFunction });
-
-    // Request getGreeting
-    try {
-        const result = await window.ethereum.request({
-            method: 'eth_call', params: [{
-                to: CONTRACT_ON_CHAINS[CHAIN_CONNECTED.id],
-                data: encodedFunction
-            }]
-        });
-        preContractRead.innerHTML = `${result}\n\n// ${hex2ascii(result)}`;
-    } catch (error) {
-        console.log({ error });
-        preContractRead.innerHTML = error?.message ?? 'Unknown contract read error.';
-    }
-
-    button.removeAttribute('disabled');
-    console.groupEnd();
-};
-
-/**
- * When the setGreeting form is submitted
- * @param {*} event 
- */
-const onSubmitContractWrite = async (event) => {
-    event.preventDefault();
-    console.group('onSubmitContractWrite');
-
-    const greeting = event.currentTarget.greeting.value;
-    console.log({ greeting });
-
-    // Reset & Set Loading State
-    const preContractWrite = document.getElementById('pre-contract-write');
-    preContractWrite.innerHTML = '(Loading...)';
-    const input = document.querySelector(`#${event.currentTarget.id} input`);
-    const button = document.querySelector(`#${event.currentTarget.id} button`);
-    button.setAttribute('disabled', true);
-
-    // Setup Interface + Encode Function
-    const SetGreeting = CONTRACT_ABI.find(i => i.name === 'setGreeting');
-    const interface = new ethers.utils.Interface([SetGreeting]);
-    const encodedFunction = interface.encodeFunctionData(`${SetGreeting.name}`, [greeting]);
-    console.log({ encodedFunction });
-
-    // Request setGreeting
-    try {
-        const result = await window.ethereum.request({
-            method: 'eth_sendTransaction',
-            params: [{
-                from: WALLET_CONNECTED,
-                to: CONTRACT_ON_CHAINS[CHAIN_CONNECTED.id],
-                data: encodedFunction
-            }]
-        });
-        preContractWrite.innerHTML = `${result}\n\n// ${BLOCKCHAIN_EXPLORERS?.[CHAIN_CONNECTED?.id] ?? ''}/tx/${result}`;
-    } catch (error) {
-        console.log({ error });
-        preContractWrite.innerHTML = error?.message ?? 'Unknown contract write error.';
-    }
-
-    input.removeAttribute('disabled');
-    button.removeAttribute('disabled');
-    console.groupEnd();
-};
-
-// Initial Script Loaded On Window Loaded
-// ========================================================
-/**
- * Init
- */
+// 코드 사용 예시
 window.onload = async () => {
-    console.group('window.onload');
+  console.group("window.onload");
+  if (!window.ethereum) {
+    console.log("MetaMask를 설치해주세요.");
+    return;
+  }
 
-    // Replace elements with required chain name
-    const chainNameReplace = document.querySelectorAll('.chain-name');
-    chainNameReplace.forEach(el => {
-        el.innerHTML = `${CHAIN_DICTIONARY[CHAIN_ID_REQUIRED]}`
-    });
+  const walletProvider = new ethers.providers.Web3Provider(window.ethereum);
+  await walletProvider.send("eth_requestAccounts", []); // 메타마스크 연결
+  const signer = walletProvider.getSigner();
+  const userAddress = await signer.getAddress();
 
-    // Replace elements with required chain name and link
-    const chainLinkReplace = document.querySelectorAll('.chain-link');
-    chainLinkReplace.forEach(el => {
-        el.innerHTML = `${CHAIN_DICTIONARY[CHAIN_ID_REQUIRED]}`
-        el.setAttribute('href', `${BLOCKCHAIN_EXPLORERS[CHAIN_ID_REQUIRED]}/address/${CONTRACT_ON_CHAINS[CHAIN_ID_REQUIRED]}`)
-    });
+  // --------------
+  console.group("조회하기");
+  // --------------
+  console.group("MACH 잔액 조회하기");
+  const machBalance = await getMachBalance(userAddress);
+  console.log(machBalance.toString()); // Decimal이 18이므로 매우 긴 문자열
+  console.log(ethers.utils.formatEther(machBalance)); // Decimal이 18을 보기 좋게 변환, 만약 decimal이 6이라면 formatUnits(machBalance, 6)을 사용하면 됩니다.
+  console.groupEnd();
 
-    // All HTML Elements
-    const buttonConnect = document.getElementById('button-connect');
-    const buttonDisconnect = document.getElementById('button-disconnect');
-    const buttonNetwork = document.getElementById('button-network');
-    const formContractRead = document.getElementById('form-contract-read');
-    const formContractWrite = document.getElementById('form-contract-write');
+  console.group("MACH Allowance 조회하기");
+  // - Allowance = DSP_Bootstrap 컨트랙트가 사용자로부터 얼마나 많은 MACH를 사용할 수 있는지에 대한 값
+  // - Allowance가 1이라면,
+  const allowance = await getAllownace(userAddress);
+  console.log(ethers.utils.formatEther(allowance)); // allownace도 decimal이 18이므로 formatEther를 사용하면 됩니다.
+  console.groupEnd();
 
-    // Event Interactions
-    buttonConnect.addEventListener('click', connect);
-    buttonDisconnect.addEventListener('click', disconnect);
-    buttonNetwork.addEventListener('click', switchNetwork);
-    formContractRead.addEventListener('submit', onSubmitContractRead);
-    formContractWrite.addEventListener('submit', onSubmitContractWrite);
+  console.group("Vault 조회하기");
+  try {
+    const vaults = await getVaults(userAddress);
+    console.log(vaults);
+  } catch {}
+  console.groupEnd();
+  console.groupEnd();
 
-    // Check if browser has wallet integration
-    if (typeof window?.ethereum !== "undefined") {
-        // Enable Button
-        buttonConnect.removeAttribute('disabled');
-        buttonConnect.innerHTML = "Connect Wallet";
+  console.group("Approve 실행");
+  try {
+    // 100000000 MACH를 approve합니다.
+    const tx = approve(ethers.utils.parseEther("100000000"), signer);
+    // 만약 트랜잭션을 만든다면, tx.wait() 을 실행해서, 트랜잭션이 완료되기를 기다릴 수 있습니다.
+    // https://docs.ethers.org/v5/api/providers/types/#providers-TransactionResponse 에서 wait() 참고
+    console.log(tx);
+  } catch (e) {
+    // 실행할 수 없는 트랜잭션 또는 유저가 취소한 경우
+    console.log("실행 취소");
+  }
+  console.groupEnd();
 
-        // Events
-        window.ethereum.on('accountsChanged', onAccountsChanged);
-        window.ethereum.on('chainChanged', onChainChanged);
+  // -------
+  console.group("예치하기");
+  // -------
+  // 예치를 하기 위해서는, allownace >= amount 여야합니다.
+  // 만약 allownace가 부족하다면, approve를 실행해야합니다.
+  //
+  try {
+    // 10000MACH를 Deposit합니다.
+    const tx = deposit(ethers.utils.parseEther("10000"), signer);
+    console.log(tx);
+  } catch (e) {
+    console.log("실행 취소");
+  }
+  console.groupEnd();
 
-        // Check if already connected with the number of permissions we have
-        const hasWalletPermissions = await window.ethereum.request({ method: 'wallet_getPermissions' });
-        console.log({ hasWalletPermissions });
+  // -------
+  console.group("출금하기");
+  // -------
+  try {
+    // signer의 id=0 vault를 출금합니다.
+    const tx = claim(0, signer);
+    console.log(tx);
+  } catch (e) {
+    console.log("실행 취소");
+  }
+  console.groupEnd();
 
-        // Retrieve wallet connection preference from localStorage
-        const shouldBeConnected = JSON.parse(localStorage.getItem(WALLET_CONNECTION_PREF_KEY)) || false;
-        console.log({ shouldBeConnected });
-
-        // If wallet has permissions update the site UI
-        if (hasWalletPermissions.length > 0 && shouldBeConnected) {
-            // Retrieve chain
-            const chainId = await ethereum.request({ method: 'eth_chainId' });
-            onChainChanged(chainId);
-            connect();
-        }
-    }
-
-    console.groupEnd();
+  console.groupEnd();
 };
