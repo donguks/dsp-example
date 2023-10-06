@@ -19,22 +19,48 @@ async function getVaults(address) {
     DSP_BOOTSTRAP_ADDRESS,
     [
       "function nextVaultId(address owner) view returns (uint nextVaultId)",
-      "function vault(address owner, uint256 id) view returns (tuple(uint amount, uint depositTs, bool active))",
+      "function vaults(address owner, uint256 id) view returns (tuple(uint amount, uint depositTs, bool active) vault)",
     ],
     provider
   );
 
   const nextId = await contract.nextVaultId(address);
-  let max = nextId.toNumber();
+  const max = nextId.toNumber();
+  const currentUnix = Math.floor(Date.now() / 1000);
+  const weeks143 = 143 * 7 * 24 * 60 * 60;
+  const weeks37 = 37 * 7 * 24 * 60 * 60;
 
-  const vaults = await Promise.all([
-    ...Array(max)
+  const vaults = await Promise.all(
+    Array(max)
       .fill()
-      .map((_, i) => contract.vault(address, i)),
-  ]);
+      .map(async (_, i) => {
+        const vault = await contract.vaults(address, i);
+        const depositUnix = vault.depositTs.toNumber();
+        const diff = currentUnix - depositUnix;
 
-  console.log(vaults);
-  // 3. Claim 가능한 토큰 계산하기.
+        let mach = 0;
+        let dsp = vault.amount.mul(10).mul(diff).div(weeks143);
+        if (depositUnix + weeks143 > currentUnix) {
+          mach = vault.amount.mul(weeks143 - diff).div(weeks143)
+        }
+
+        if(depositUnix + weeks37 + weeks143 < currentUnix) {
+          dsp = vault.amount.mul(10).mul(180).div(143);
+        }
+
+        return {
+          amount: ethers.utils.formatEther(vault.amount), // 원금
+          depositTs: depositUnix, // 예치 unix
+          active: vault.active,
+          // MACH 남은 양
+          mach: ethers.utils.formatEther(mach),
+          // 수령가능 dsp 
+          dsp: ethers.utils.formatEther(dsp),
+        }
+      }),
+  );
+
+  return vaults;
 }
 
 async function getAllownace(address) {
@@ -105,7 +131,7 @@ window.onload = async () => {
   // --------------
   console.group("MACH 잔액 조회하기");
   const machBalance = await getMachBalance(userAddress);
-  console.log(machBalance.toString()); // Decimal이 18이므로 매우 긴 문자열
+  // console.log(machBalance.toString()); // Decimal이 18이므로 매우 긴 문자열
   console.log(ethers.utils.formatEther(machBalance)); // Decimal이 18을 보기 좋게 변환, 만약 decimal이 6이라면 formatUnits(machBalance, 6)을 사용하면 됩니다.
   console.groupEnd();
 
@@ -133,12 +159,11 @@ window.onload = async () => {
     // https://docs.ethers.org/v5/api/providers/types/#providers-TransactionResponse 에서 wait() 참고
     await tx.wait();
   } catch (e) {
-    // 실행할 수 없는 트랜잭션 또는 유저가 취소한 경우
-    console.log("실행 취소");
   }
   console.groupEnd();
   */
 
+  /*
   // -------
   console.group("예치하기");
   // -------
@@ -150,9 +175,9 @@ window.onload = async () => {
     const tx = deposit(ethers.utils.parseEther("100"), signer);
     await tx.wait();
   } catch (e) {
-    console.log("실행 취소");
   }
   console.groupEnd();
+  */
 
   /*
   // -------
@@ -164,7 +189,6 @@ window.onload = async () => {
     await tx.wait();
     console.log(tx);
   } catch (e) {
-    console.log("실행 취소");
   }
   console.groupEnd();
   */
